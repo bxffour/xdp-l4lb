@@ -3,12 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
-	"net"
 	"os"
 	"os/signal"
 	"syscall"
 
-	"github.com/bxffour/xdp-l4lb/app"
+	"github.com/bxffour/xdp-l4lb/internal/app"
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/urfave/cli/v2"
@@ -39,6 +38,16 @@ var startCommand = cli.Command{
 			DefaultText: "xdp.print",
 			Value:       "xdp.print",
 		},
+		&cli.StringFlag{
+			Name:  "arp",
+			Usage: "path to arp table. For environments where arp isn't available i.e docker",
+		},
+		&cli.StringFlag{
+			Name:        "mode",
+			Aliases:     []string{"m"},
+			Usage:       "mode to load xdp program in (skb|driver)",
+			DefaultText: "driver",
+		},
 	},
 
 	Before: func(ctx *cli.Context) error {
@@ -49,22 +58,13 @@ var startCommand = cli.Command{
 	},
 
 	Action: func(ctx *cli.Context) error {
-		lb := &app.LoadBalancer{}
-
 		ifaceName := ctx.String("dev")
 		configPath := ctx.String("config")
+		arp := ctx.String("arp")
 
-		iface, err := net.InterfaceByName(ifaceName)
+		lb, err := app.NewLoadBalancer(ifaceName, configPath, arp)
 		if err != nil {
-			return err
-		}
-
-		if err := lb.BalancerFromInterface(iface); err != nil {
-			return err
-		}
-
-		if err := lb.Config.ReadYaml(configPath); err != nil {
-			return err
+			return fmt.Errorf("error getting new loadbalancer: %w", err)
 		}
 
 		var objs bpfObjects
@@ -88,11 +88,12 @@ var startCommand = cli.Command{
 		section := ctx.String("section")
 		prog := string2Sec(section, objs)
 
+		mode := ctx.String("mode")
 		log.Printf("attaching progsec %s to interface %d\n", section, lb.Index)
 		l, err := link.AttachXDP(link.XDPOptions{
 			Program:   prog,
 			Interface: lb.Index,
-			Flags:     link.XDPDriverMode,
+			Flags:     string2mode(mode),
 		})
 
 		if err != nil {
@@ -101,7 +102,7 @@ var startCommand = cli.Command{
 
 		defer l.Close()
 
-		log.Printf("Attached XDP program to iface %q (index %d)", ifaceName, iface.Index)
+		log.Printf("Attached XDP program to iface %q (index %d)", ifaceName, lb.Index)
 		log.Printf("Press CTRL-C to exit the program")
 
 		ctrlC := make(chan os.Signal, 1)
@@ -110,6 +111,17 @@ var startCommand = cli.Command{
 		<-ctrlC
 		return nil
 	},
+}
+
+func string2mode(mode string) link.XDPAttachFlags {
+	switch mode {
+	case "skb":
+		return link.XDPGenericMode
+	case "driver":
+		return link.XDPDriverMode
+	default:
+		return link.XDPDriverMode
+	}
 }
 
 func string2Sec(sec string, objs bpfObjects) *ebpf.Program {

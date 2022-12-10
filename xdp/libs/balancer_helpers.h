@@ -29,6 +29,16 @@ __attribute__((__always_inline__)) static inline bool mac_is_equal(
     return true;
 }
 
+__attribute__((__always_inline__)) static inline void print_mac(
+        unsigned char mac[ETH_ALEN])
+{
+    int i;
+    
+    for (i = 0; i < ETH_ALEN; i++) {
+        __bpf_printk("%x", mac[i]);
+    }
+}
+
 __attribute__((__always_inline__)) static inline
 void process_mac(
     struct ethhdr* eth, 
@@ -66,8 +76,7 @@ void process_tcp(
     flow->sport = tcp->source;
     flow->dport = tcp->dest;
     
-    tcp->source = sport;
-    tcp->dest   = dport;
+    rewrite_tcphdr(tcp, sport, dport);    
 }
 
 __attribute__((__always_inline__)) static inline
@@ -80,8 +89,7 @@ void process_udp(
     flow->sport = udp->source;
     flow->dport = udp->dest;
     
-    udp->source = sport;
-    udp->dest   = dport;
+    rewrite_udphdr(udp, sport, dport);    
 }
 
 __attribute__((__always_inline__)) static inline
@@ -151,14 +159,18 @@ int process_ingress_traffic(void* data, void* data_end)
     if (!get_loadbalancer(&lb)) {
         return XDP_ABORTED;
     }
-    
+   
     struct backend* backend;
     if (!get_backend(&backend)) {
         return XDP_ABORTED;
     }
-    
+
+    if (eth->h_proto == bpf_htons(ETH_P_ARP)) {
+        return XDP_PASS;
+    }
+
     if (!mac_is_equal(eth->h_dest, lb->mac)) {
-        return XDP_ABORTED;
+        return XDP_DROP;
     }
     
     process_mac(eth, lb->mac, backend->mac, &flow);
@@ -174,11 +186,13 @@ int process_ingress_traffic(void* data, void* data_end)
     
     process_ip(iph, lb->ip, backend->ipv4, &flow);
         
-    __u16 sport = bpf_htons(4004);
-    __u16 dport = bpf_htons(5005);
+    __u16 sport = bpf_htons(5000);
+    __u16 dport = bpf_htons(5000);
     
     off += sizeof(struct iphdr);
-    if (iph->protocol == IPPROTO_TCP) {
+    __u8 ipproto = iph->protocol;
+    if (ipproto == IPPROTO_TCP) {
+        __bpf_printk("tcp!");
         tcp = data + off;
         if (tcp + 1 > data_end) {
             return XDP_ABORTED;
@@ -186,9 +200,13 @@ int process_ingress_traffic(void* data, void* data_end)
         
         process_tcp(tcp, sport, dport, &flow);
         f_key.port = tcp->source;
-    } else if (iph->protocol == IPPROTO_UDP) {
+    }
+    
+    if (ipproto == IPPROTO_UDP) {
+        __bpf_printk("udp!");
         udp = data + off;
         if (udp + 1 > data_end) {
+            __bpf_printk("udp messop");
             return XDP_ABORTED;
         }
         

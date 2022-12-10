@@ -1,5 +1,6 @@
 #include <linux/in.h>
 #include <linux/ip.h>
+#include <linux/tcp.h>
 #include <linux/udp.h>
 #include <stdbool.h>
 
@@ -37,4 +38,22 @@ ipv4_csum_inline(void* iph, __u64*csum)
   }
   
   *csum = csum_fold_helper(*csum);
+}
+
+__attribute__((__always_inline__)) static inline 
+__u16 tcph_csum_diff(__u16 seed, struct tcphdr* tcph_new, struct tcphdr* tcph_old)
+{
+  __u32 csum, size = sizeof(struct tcphdr);
+  
+  csum = bpf_csum_diff((__be32*)tcph_old, size, (__be32*)tcph_new, size, seed);
+  return csum_fold_helper(csum);
+}
+
+__attribute__((__always_inline__)) static inline 
+__u16 udph_csum_diff(__u16 seed, struct udphdr* udph_new, struct udphdr* udph_old)
+{
+  __u32 csum, size = sizeof(struct udphdr);
+  
+  csum = bpf_csum_diff((__be32*)udph_old, size, (__be32*)udph_new, size, seed);
+  return csum_fold_helper(csum);
 }

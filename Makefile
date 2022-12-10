@@ -1,31 +1,12 @@
-CC = clang
-
-
-GO_DIR  = .
+GO_DIR  = ./cmd/xdplb
 BPF_SRC = ./xdp
 TESTENV = /home/sxntana/Documents/studies/xdp/xdp-tutorial/testenv/testenv.sh
 
 TARGET         = xdplb
-BPF_TARGET     = ${TARGET:=_kern}
-BPF_C          = $(BPF_SRC)/${BPF_TARGET:=.c}
-BPF_OBJ        = ${BPF_TARGET:=.o}
-LIBBPF_HEADERS = libbpf/src
-LIBBPF_OBJ     = libbpf/src/libbpf.a
-BUILD_DIR_BPF  = bin/objs
 BUILD_DIR_GO   = bin/go
 DOCKER_BIN	   = testenv/app
 GO_BIN         = $(BUILD_DIR_GO)/$(TARGET)
 CONFIG		   = config.yml
-
-CFLAGS = -target bpf \
-			-g \
-			-D __BPF_TRACING__ \
-			-I $(LIBBPF_HEADERS) \
-			-Wall \
-			-Wno-unused-value \
-			-Wno-pointer-sign \
-			-Wno-compare-distinct-pointer-types \
-			-Werror
 
 .PHONY: all
 all: audit generate $(TARGET)
@@ -66,7 +47,7 @@ trace:
 ping:
 	sudo $(TESTENV) ping -n test --legacy
 
-SECTION ?= "xdp.compare"
+SECTION ?= "xdp.pass"
 .PHONY: attach
 attach: generate $(TARGET)
 	sudo ./$(GO_BIN) start --dev test -c $(CONFIG) --sec $(SECTION)
@@ -85,11 +66,6 @@ $(TARGET): generate
 deploy: $(TARGET)
 	cp $(BUILD_DIR_GO)/$^ $(DOCKER_BIN)
 	 
-$(BPF_OBJ): $(BPF_C) ./src/kspace/xdp_l4lb_kern.h ./src/kspace/xdp_l4lb_pkt.h ./src/kspace/xdp_l4lb_stats.h
-	$(CC) -S $(CFLAGS) \
-		-O2 -emit-llvm -c -o $(BUILD_DIR_BPF)/${@:.o=.ll} $<
-	llc -march=bpf -filetype=obj -o $(BUILD_DIR_BPF)/$@ $(BUILD_DIR_BPF)/${@:.o=.ll}
-
 #============================================================================#
 # DEBUG
 #============================================================================#

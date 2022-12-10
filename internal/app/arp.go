@@ -15,12 +15,16 @@ const (
 	// Make loadbalancer capable of redirecting traffic
 	// through other interfaces.
 	IFNAME int = 5
+
+	DEFAULT_ARP_PATH = "/proc/net/arp"
 )
+
+var arpPath string
 
 type arpTable map[string]string
 
-func readSysArp() (arpTable, error) {
-	f, err := os.Open("/proc/net/arp")
+func readSysArp(arpPath string) (arpTable, error) {
+	f, err := os.Open(arpPath)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +57,11 @@ func (a *Arp) Refresh() (err error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 
-	table, err := readSysArp()
+	if arpPath == "" {
+		arpPath = DEFAULT_ARP_PATH
+	}
+
+	table, err := readSysArp(arpPath)
 	if err != nil {
 		return err
 	}

@@ -31,7 +31,26 @@ void rewrite_tcphdr(
 		__u16 sport,
 		__u16 dport)
 {
-	__u64 csum = 0;
+	struct tcphdr tcp_old;
+	__u16 old_csum = tcp->check;
+	tcp->check = 0;
+	tcp_old = *tcp;
 	tcp->source = sport;
 	tcp->dest = dport;
+	tcp->check = tcph_csum_diff(~old_csum, tcp, &tcp_old);
+}
+
+__attribute__((__always_inline__)) static inline
+void rewrite_udphdr(
+		struct udphdr* udp,
+		__u16 sport,
+		__u16 dport)
+{
+	struct udphdr udp_old;
+	__u16 old_csum = udp->check;
+	udp->check = 0;
+	udp_old = *udp;
+	udp->source = sport;
+	udp->dest = dport;
+	udp->check = udph_csum_diff(~old_csum, udp, &udp_old);
 }

@@ -64,7 +64,7 @@ func (lb *LoadBalancer) MarshalBinary() ([]byte, error) {
 
 // AddressByInterface retrieves the IP and Mac addresses of a given
 // interface.
-func (lb *LoadBalancer) BalancerFromInterface(iface *net.Interface) error {
+func balancerFromInterface(lb *LoadBalancer, iface *net.Interface) error {
 	if iface.Flags&net.FlagUp == 0 {
 		return errInterfaceDown
 	}
@@ -115,6 +115,28 @@ func (lb *LoadBalancer) BalancerFromInterface(iface *net.Interface) error {
 		return errInvalidIp
 	}
 	return nil
+}
+
+func NewLoadBalancer(ifName string, config string, arp string) (*LoadBalancer, error) {
+	iface, err := net.InterfaceByName(ifName)
+	if err != nil {
+		return nil, err
+	}
+
+	if arp != "" {
+		arpPath = arp
+	}
+
+	lb := &LoadBalancer{}
+	if err := balancerFromInterface(lb, iface); err != nil {
+		return nil, err
+	}
+
+	if err := lb.Config.ReadYaml(config); err != nil {
+		return nil, err
+	}
+
+	return lb, nil
 }
 
 // WriteToMap writes the load balancer's addresses into the

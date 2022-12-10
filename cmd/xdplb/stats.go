@@ -8,7 +8,7 @@ import (
 	"path"
 	"time"
 
-	"github.com/bxffour/xdp-l4lb/stats"
+	"github.com/bxffour/xdp-l4lb/internal/stats"
 	"github.com/cilium/ebpf"
 	"github.com/urfave/cli/v2"
 )

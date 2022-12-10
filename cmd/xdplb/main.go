@@ -7,7 +7,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang bpf ./xdp/lb_kern.c
+//go:generate go run github.com/cilium/ebpf/cmd/bpf2go -target bpfel -cc clang bpf ../../xdp/lb_kern.c
 
 func main() {
 	app := cli.NewApp()
