@@ -1,0 +1,49 @@
+Vagrant.configure("2") do |config|
+	
+	config.vm.define "lb" do |lb|
+			lb.vm.box = "generic/ubuntu2204"
+
+			lb.vm.synced_folder "./loadbalancer", "/vagrant", type: "nfs", nfs_udp: false
+
+			lb.vm.network "private_network",
+				libvirt__network_name: "internal",
+				ip: "172.20.0.10"
+
+			lb.vm.network "public_network",
+				dev:  "extbr0",
+				mode: "bridge",
+				type: "bridge",
+				ip: "172.30.0.10"
+
+			lb.vm.provider "libvirt" do |lb|
+				lb.cpus = 2
+				lb.memory = 1024
+			end
+
+			lb.vm.provision "shell", inline: <<-SHELL
+				/vagrant/entry.sh
+			SHELL
+	end
+
+	(0..1).each do |i|
+	config.vm.define "be#{i}" do |be|
+			be.vm.hostname = "backend#{i}"
+			be.vm.box = "generic/alpine38"
+			be.vm.synced_folder "./backend", "/vagrant", type: "nfs", nfs_udp: false
+
+			be.vm.network "private_network",
+				libvirt__network_name: "internal",
+				ip: "172.20.0.#{11+i}"
+
+			be.vm.provider "libvirt" do |be|
+				be.cpus = 1
+				be.memory = 512
+			end
+
+			be.vm.provision "shell", inline: <<-SHELL
+				apk add tcpdump
+				/vagrant/entry.sh backend#{i}
+			SHELL
+	end
+	end
+end

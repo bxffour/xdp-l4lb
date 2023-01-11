@@ -1,0 +1,123 @@
+version: "3.8"
+services:
+  lb:
+    image: "bxffour/rockylinux-xdp"
+    privileged: true
+    stdin_open: true
+    command: /app/entry.sh
+    networks:
+      xdp-net:
+        ipv4_address: 172.20.0.10
+      public:
+        ipv4_address: 172.30.0.10
+    ports:
+      - "5000/tcp"
+    volumes:
+      - type: bind
+        source: /sys/fs/bpf
+        target: /sys/fs/bpf
+      - type: bind
+        source: /sys/kernel/debug
+        target: /sys/kernel/debug
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/app/lb
+        target: /app
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/pcap
+        target: /pcap 
+  lb2:
+    image: "alpine:3.17.0"
+    privileged: true
+    stdin_open: true
+    command: sh
+    networks:
+      xdp-net:
+        ipv4_address: 172.20.0.15
+      public:
+        ipv4_address: 172.30.0.15
+    ports:
+      - "5000/tcp"
+    volumes:
+      - type: bind
+        source: /sys/fs/bpf
+        target: /sys/fs/bpf
+      - type: bind
+        source: /sys/kernel/debug
+        target: /sys/kernel/debug
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/app/lb
+        target: /app
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/pcap
+        target: /pcap 
+  be-1:
+    image: "bxffour/rockylinux-xdp"
+    command: /app/entry.sh
+    depends_on: 
+      - lb
+    stdin_open: true
+    privileged: true
+    networks:
+      xdp-net:
+        ipv4_address: 172.20.0.11
+    volumes:
+      - type: bind
+        source: /sys/fs/bpf
+        target: /sys/fs/bpf
+      - type: bind
+        source: /sys/kernel/debug
+        target: /sys/kernel/debug
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/app/ping
+        target: /app
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/pcap
+        target: /pcap 
+
+  be-2:
+    image: "bxffour/rockylinux-xdp"
+    command: /app/entry.sh
+    depends_on: 
+      - lb
+    stdin_open: true
+    privileged: true
+    networks:
+      xdp-net:
+        ipv4_address: 172.20.0.12
+    volumes:
+      - type: bind
+        source: /sys/kernel/debug
+        target: /sys/kernel/debug
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/app/ping
+        target: /app
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/pcap
+        target: /pcap 
+  client:
+    image: "bxffour/rockylinux-xdp"
+    command: /app/entry.sh
+    depends_on: 
+      - lb
+    stdin_open: true
+    privileged: true
+    networks:
+      public:
+        ipv4_address: 172.30.0.11
+    volumes:
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/app/client
+        target: /app
+      - type: bind
+        source: /home/sxntana/github_projects/xdp-l4lb/testenv/pcap
+        target: /pcap 
+
+networks:
+  xdp-net:
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  public:
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24

@@ -1,15 +1,21 @@
-GO_DIR  = ./cmd/xdplb
+GO_DIR  = ./cmd
 BPF_SRC = ./xdp
 TESTENV = /home/sxntana/Documents/studies/xdp/xdp-tutorial/testenv/testenv.sh
 
-TARGET         = xdplb
-BUILD_DIR_GO   = bin/go
-DOCKER_BIN	   = testenv/app
+LOADBAL        = xdplb
+BACKEND		   = server
+BUILD_DIR_GO   = ./bin/go
 GO_BIN         = $(BUILD_DIR_GO)/$(TARGET)
 CONFIG		   = config.yml
 
+VAGRANT_DIR = ./testenv/vagrant
+PING_SRC    = $(GO_DIR)/$(BACKEND)
+LB_SRC	    = $(GO_DIR)/$(LOADBAL)
+PING        = $(BUILD_DIR_GO)/$(BACKEND)
+LB          = $(BUILD_DIR_GO)/$(LOADBAL)
+
 .PHONY: all
-all: audit generate $(TARGET)
+all: audit $(LOADBAL) $(BACKEND)
 
 #=====================================================================#
 # AUDIT
@@ -36,8 +42,14 @@ cleanup:
 #=====================================================================#
 
 .PHONY: generate
-generate: $(GO_DIR)/main.go
+generate: $(LB_SRC)/main.go
 	go generate ./...
+
+$(LOADBAL): generate
+	CGO_ENABLED=0 go build -o $(LB) $(LB_SRC)
+
+$(BACKEND):
+	CGO_ENABLED=0 go build -o $(PING) $(PING_SRC) 
 
 .PHONY: trace
 trace:
@@ -50,21 +62,18 @@ ping:
 SECTION ?= "xdp.pass"
 .PHONY: attach
 attach: generate $(TARGET)
-	sudo ./$(GO_BIN) start --dev test -c $(CONFIG) --sec $(SECTION)
+	sudo ./$(LB) start --dev test --egress test -c $(CONFIG) --sec $(SECTION)
 
 .PHONY:
 vmlinux:
 	bpftool btf dump file /sys/kernel/btf/vmlinux format c > xdp/libs/vmlinux.h
 
 xdp_stats:
-	sudo ./$(GO_BIN) stats 
-
-$(TARGET): generate
-	go build -o $(BUILD_DIR_GO)/$@ $(GO_DIR)/*.go
+	sudo ./$(LB) stats 
 	
 .PHONY: deploy
 deploy: $(TARGET)
-	cp $(BUILD_DIR_GO)/$^ $(DOCKER_BIN)
+	cp $(LB) $(DOCKER_BIN)/lb
 	 
 #============================================================================#
 # DEBUG
@@ -96,3 +105,14 @@ xdp-interface:
 backends:
 	sudo $(TESTENV) setup -n be1 --legacy
 	sudo $(TESTENV) setup -n be2 --legacy
+
+
+#============================================================================#
+# TESTENV
+#============================================================================#
+
+VAGRANT_DIR=./testenv/vagrant
+
+vagrant_deploy: $(LOADBAL) $(BACKEND)
+	cp $(LB) $(VAGRANT_DIR)/loadbalancer
+	cp $(PING) $(VAGRANT_DIR)/backend

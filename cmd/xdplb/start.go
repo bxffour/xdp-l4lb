@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -23,6 +24,16 @@ var startCommand = cli.Command{
 			Name:     "dev",
 			Required: true,
 			Usage:    "<ifname> of interface to attach program to",
+		},
+
+		&cli.StringFlag{
+			Name:     "egress",
+			Required: false,
+			Usage:    "<ifname> of the egress interface",
+		},
+		&cli.BoolFlag{
+			Name:  "pinned",
+			Usage: "run the load balancer in pinned mode",
 		},
 		&cli.StringFlag{
 			Name:        "config",
@@ -62,9 +73,23 @@ var startCommand = cli.Command{
 		configPath := ctx.String("config")
 		arp := ctx.String("arp")
 
+		var egress string
+		pinned := ctx.Bool("pinned")
+		if !pinned {
+			egress = ctx.String("egress")
+			if egress == "" {
+				return errors.New("egress interface is required if pinned mode is off")
+			}
+		}
+
 		lb, err := app.NewLoadBalancer(ifaceName, configPath, arp)
 		if err != nil {
 			return fmt.Errorf("error getting new loadbalancer: %w", err)
+		}
+
+		e, err := app.NewEgress(egress)
+		if err != nil {
+			return fmt.Errorf("error geting egress interface: %w", err)
 		}
 
 		var objs bpfObjects
@@ -79,6 +104,10 @@ var startCommand = cli.Command{
 
 		if err := lb.WriteToMap(objs.LbMetadata); err != nil {
 			return fmt.Errorf("failed to write to lb_metadata map: %w", err)
+		}
+
+		if err := e.WriteToMap(objs.EgressMetadata); err != nil {
+			return fmt.Errorf("failed to write to egress_metadata: %w", err)
 		}
 
 		if err := lb.WriteBackends(objs.BackendMap); err != nil {
@@ -126,16 +155,14 @@ func string2mode(mode string) link.XDPAttachFlags {
 
 func string2Sec(sec string, objs bpfObjects) *ebpf.Program {
 	switch sec {
-	case "xdp.compare":
-		return objs.XdpCompare
 	case "xdp.pass":
 		return objs.XdpPass
-	case "xdp.drop":
-		return objs.XdpDrop
-	case "xdp.abort":
-		return objs.XdpAbort
 	case "xdp.loadbalancer":
 		return objs.XdpLoadbalancer
+	case "xdp.decap":
+		return objs.XdpDecap
+	case "xdp.test":
+		return objs.XdpTest
 	default:
 		log.Fatal("invalid input")
 	}

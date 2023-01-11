@@ -20,12 +20,9 @@ type bpfBackend struct {
 
 type bpfFlow struct {
 	Saddr uint32
-	Daddr uint32
-	Sport uint16
-	Dport uint16
-	Proto uint8
-	Flags uint8
 	Smac  [6]uint8
+	_     [2]byte
+	Ports uint32
 }
 
 type bpfFlowKey struct {
@@ -76,22 +73,22 @@ type bpfSpecs struct {
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfProgramSpecs struct {
-	XdpAbort        *ebpf.ProgramSpec `ebpf:"xdp_abort"`
-	XdpCompare      *ebpf.ProgramSpec `ebpf:"xdp_compare"`
-	XdpDrop         *ebpf.ProgramSpec `ebpf:"xdp_drop"`
+	XdpDecap        *ebpf.ProgramSpec `ebpf:"xdp_decap"`
 	XdpLoadbalancer *ebpf.ProgramSpec `ebpf:"xdp_loadbalancer"`
 	XdpPass         *ebpf.ProgramSpec `ebpf:"xdp_pass"`
+	XdpTest         *ebpf.ProgramSpec `ebpf:"xdp_test"`
 }
 
 // bpfMapSpecs contains maps before they are loaded into the kernel.
 //
 // It can be passed ebpf.CollectionSpec.Assign.
 type bpfMapSpecs struct {
-	BackendMap    *ebpf.MapSpec `ebpf:"backend_map"`
-	IpToIndexMap  *ebpf.MapSpec `ebpf:"ip_to_index_map"`
-	LbMetadata    *ebpf.MapSpec `ebpf:"lb_metadata"`
-	PacketFlowMap *ebpf.MapSpec `ebpf:"packet_flow_map"`
-	XdpStatsMap   *ebpf.MapSpec `ebpf:"xdp_stats_map"`
+	BackendMap     *ebpf.MapSpec `ebpf:"backend_map"`
+	EgressMetadata *ebpf.MapSpec `ebpf:"egress_metadata"`
+	IpToIndexMap   *ebpf.MapSpec `ebpf:"ip_to_index_map"`
+	LbMetadata     *ebpf.MapSpec `ebpf:"lb_metadata"`
+	PacketFlowMap  *ebpf.MapSpec `ebpf:"packet_flow_map"`
+	XdpStatsMap    *ebpf.MapSpec `ebpf:"xdp_stats_map"`
 }
 
 // bpfObjects contains all objects after they have been loaded into the kernel.
@@ -113,16 +110,18 @@ func (o *bpfObjects) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfMaps struct {
-	BackendMap    *ebpf.Map `ebpf:"backend_map"`
-	IpToIndexMap  *ebpf.Map `ebpf:"ip_to_index_map"`
-	LbMetadata    *ebpf.Map `ebpf:"lb_metadata"`
-	PacketFlowMap *ebpf.Map `ebpf:"packet_flow_map"`
-	XdpStatsMap   *ebpf.Map `ebpf:"xdp_stats_map"`
+	BackendMap     *ebpf.Map `ebpf:"backend_map"`
+	EgressMetadata *ebpf.Map `ebpf:"egress_metadata"`
+	IpToIndexMap   *ebpf.Map `ebpf:"ip_to_index_map"`
+	LbMetadata     *ebpf.Map `ebpf:"lb_metadata"`
+	PacketFlowMap  *ebpf.Map `ebpf:"packet_flow_map"`
+	XdpStatsMap    *ebpf.Map `ebpf:"xdp_stats_map"`
 }
 
 func (m *bpfMaps) Close() error {
 	return _BpfClose(
 		m.BackendMap,
+		m.EgressMetadata,
 		m.IpToIndexMap,
 		m.LbMetadata,
 		m.PacketFlowMap,
@@ -134,20 +133,18 @@ func (m *bpfMaps) Close() error {
 //
 // It can be passed to loadBpfObjects or ebpf.CollectionSpec.LoadAndAssign.
 type bpfPrograms struct {
-	XdpAbort        *ebpf.Program `ebpf:"xdp_abort"`
-	XdpCompare      *ebpf.Program `ebpf:"xdp_compare"`
-	XdpDrop         *ebpf.Program `ebpf:"xdp_drop"`
+	XdpDecap        *ebpf.Program `ebpf:"xdp_decap"`
 	XdpLoadbalancer *ebpf.Program `ebpf:"xdp_loadbalancer"`
 	XdpPass         *ebpf.Program `ebpf:"xdp_pass"`
+	XdpTest         *ebpf.Program `ebpf:"xdp_test"`
 }
 
 func (p *bpfPrograms) Close() error {
 	return _BpfClose(
-		p.XdpAbort,
-		p.XdpCompare,
-		p.XdpDrop,
+		p.XdpDecap,
 		p.XdpLoadbalancer,
 		p.XdpPass,
+		p.XdpTest,
 	)
 }
 

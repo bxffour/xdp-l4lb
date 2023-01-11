@@ -51,6 +51,12 @@ struct loadbalancer {
     __u32    index;
 }__attribute__((__packed__));
 
+struct egress {
+    __be32 ip;
+    unsigned char mac[ETH_ALEN];
+    __u32  index;
+}__attribute__((__packed__));
+
 struct datarec {
     __u64 rx_packets;
     __u64 rx_bytes;
@@ -63,12 +69,11 @@ struct backend {
 
 struct flow {
     __be32 saddr;
-    __be32 daddr;
-    __be16 sport;
-    __be16 dport;
-    __u8  proto;
-    __u8  flags;
-    unsigned char smac[ETH_ALEN];
+    __u8 smac[ETH_ALEN];
+    union {
+        __u32 ports;
+        __u16 port16[2];
+    };
 };
 
 struct flow_key {

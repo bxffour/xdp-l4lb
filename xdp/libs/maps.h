@@ -41,6 +41,13 @@ struct {
     __uint(key_size, sizeof(__u32));
     __uint(value_size, sizeof(struct loadbalancer));
     __uint(max_entries, 1);
-} lb_metadata SEC(".maps"); 
+} lb_metadata SEC(".maps");
+
+struct {
+    __uint(type, BPF_MAP_TYPE_ARRAY);
+    __uint(key_size, sizeof(__u32));
+    __uint(value_size, sizeof(struct egress));
+    __uint(max_entries, 2);
+} egress_metadata SEC(".maps");
 
 #endif

@@ -11,7 +11,6 @@
 #include <stdbool.h>
 
 #include "balancer_structs.h"
-#include "encap.h"
 #include "maps.h"
 
 __attribute__((__always_inline__)) static inline bool mac_is_equal(
@@ -46,50 +45,25 @@ void process_mac(
     unsigned char dmac[ETH_ALEN],
     struct flow* flow)
 {
-    memcpy(flow->smac, eth->h_source, ETH_ALEN);
+    // memcpy(flow->smac, eth->h_source, ETH_ALEN);
     
     memcpy(eth->h_source, smac, ETH_ALEN);
     memcpy(eth->h_dest, dmac, ETH_ALEN);
 }
 
 __attribute__((__always_inline__)) static inline
-void process_ip(
-    struct iphdr* iph,
-    __be32 saddr,
-    __be32 daddr,
-    struct flow* flow)
+bool get_egress(struct egress** egress_ptr)
 {
-    flow->daddr = iph->daddr;
-    flow->saddr = iph->saddr;
-    flow->proto = iph->protocol;
-    
-    rewrite_ip4hdr(iph, saddr, daddr);   
-}
+    __u32 egress_key = 0;
+    struct egress* egress;
 
-__attribute__((__always_inline__)) static inline
-void process_tcp(
-    struct tcphdr* tcp,
-    __u16 sport,
-    __u16 dport,
-    struct flow* flow)
-{
-    flow->sport = tcp->source;
-    flow->dport = tcp->dest;
-    
-    rewrite_tcphdr(tcp, sport, dport);    
-}
+    egress = bpf_map_lookup_elem(&egress_metadata, &egress_key);
+    if (!egress) {
+        return false;
+    }
 
-__attribute__((__always_inline__)) static inline
-void process_udp(
-    struct udphdr* udp,
-    __u16 sport,
-    __u16 dport,
-    struct flow* flow)
-{
-    flow->sport = udp->source;
-    flow->dport = udp->dest;
-    
-    rewrite_udphdr(udp, sport, dport);    
+    *egress_ptr = egress;
+    return true;
 }
 
 __attribute__((__always_inline__)) static inline
@@ -139,89 +113,30 @@ bool store_flow_metadata(struct flow_key* f_key, struct flow* flow)
 }
 
 __attribute__((__always_inline__)) static inline
-int process_ingress_traffic(void* data, void* data_end)
-{   
-    struct ethhdr* eth = data;
-    struct iphdr*  iph;
-    struct udphdr* udp;
-    struct tcphdr* tcp;
-        
-    struct flow flow = {};
-    struct flow_key f_key = {};
-    
-    __u64 off;
-    off = sizeof(struct ethhdr);
-    if (data + off > data_end) {
-        return XDP_ABORTED;
+bool decap(struct xdp_md* xdp, void** data_end, void** data) {
+    struct ethhdr* old_eth;
+    struct ethhdr* new_eth;
+
+    old_eth = *data;
+    new_eth = *data + sizeof(struct iphdr);
+
+    memcpy(new_eth->h_source, old_eth->h_source, ETH_ALEN);
+    memcpy(new_eth->h_dest, old_eth->h_dest, ETH_ALEN);
+    new_eth->h_proto = BE_ETH_P_IP;
+
+    if (bpf_xdp_adjust_head(xdp, (int)sizeof(struct iphdr))) {
+        return false;
     }
 
-    struct loadbalancer* lb;
-    if (!get_loadbalancer(&lb)) {
-        return XDP_ABORTED;
-    }
-   
-    struct backend* backend;
-    if (!get_backend(&backend)) {
-        return XDP_ABORTED;
-    }
+    *data = (void*)(long)xdp->data;
+    *data_end = (void*)(long)xdp->data_end;
+    return true;
+}
 
-    if (eth->h_proto == bpf_htons(ETH_P_ARP)) {
-        return XDP_PASS;
-    }
-
-    if (!mac_is_equal(eth->h_dest, lb->mac)) {
-        return XDP_DROP;
-    }
-    
-    process_mac(eth, lb->mac, backend->mac, &flow);
-    
-    iph = data + off;
-    if (iph + 1 > data_end) {
-        return XDP_ABORTED;
-    }
-    
-    if (iph->daddr != lb->ip) {
-        return XDP_ABORTED;
-    }
-    
-    process_ip(iph, lb->ip, backend->ipv4, &flow);
-        
-    __u16 sport = bpf_htons(5000);
-    __u16 dport = bpf_htons(5000);
-    
-    off += sizeof(struct iphdr);
-    __u8 ipproto = iph->protocol;
-    if (ipproto == IPPROTO_TCP) {
-        __bpf_printk("tcp!");
-        tcp = data + off;
-        if (tcp + 1 > data_end) {
-            return XDP_ABORTED;
-        }
-        
-        process_tcp(tcp, sport, dport, &flow);
-        f_key.port = tcp->source;
-    }
-    
-    if (ipproto == IPPROTO_UDP) {
-        __bpf_printk("udp!");
-        udp = data + off;
-        if (udp + 1 > data_end) {
-            __bpf_printk("udp messop");
-            return XDP_ABORTED;
-        }
-        
-        process_udp(udp, sport, dport, &flow);
-        f_key.port = udp->source;
-    } else {
-        return XDP_DROP;
-    }
-    
-    f_key.backend_addr = backend->ipv4;
-    f_key.protocol = iph->protocol;
-    
-    if (!store_flow_metadata(&f_key, &flow)) {
-        return XDP_DROP;
-    }
-    
-    return XDP_TX;
+__attribute__((__always_inline__)) static inline
+void set_ethhdr(struct ethhdr* new_eth, __u8 mac[ETH_ALEN], struct backend* be, __u16 h_proto)
+{
+   memcpy(new_eth->h_source, mac, ETH_ALEN);
+   memcpy(new_eth->h_dest, be->mac, ETH_ALEN);
+   new_eth->h_proto = h_proto;
 }

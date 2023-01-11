@@ -1,0 +1,10 @@
+<network ipv6='yes' trustGuestRxFilters='yes'>
+  <name>external</name>
+  <bridge name='extbr0'/>
+  <forward/>
+  <ip address='172.30.0.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='172.30.0.2' end='172.30.0.254'/>
+    </dhcp>
+  </ip>
+</network>
